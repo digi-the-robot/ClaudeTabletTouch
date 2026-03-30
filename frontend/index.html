@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablet Touch — FirstClaude</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0d0d0f;
+            color: #c8c8d0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: #141418;
+            border-bottom: 1px solid #2a2a32;
+            z-index: 10;
+        }
+
+        .header h1 {
+            font-size: 16px;
+            font-weight: 500;
+            color: #e0e0e8;
+        }
+
+        .header h1 span {
+            color: #7b6fde;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff4444;
+            transition: background 0.3s;
+        }
+
+        .status-dot.connected {
+            background: #44dd88;
+        }
+
+        /* Canvas area */
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            cursor: crosshair;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none; /* Critical for tablet input */
+        }
+
+        /* Debug overlay */
+        .debug {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(14, 14, 18, 0.85);
+            border: 1px solid #2a2a32;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            line-height: 1.6;
+            pointer-events: none;
+            min-width: 220px;
+        }
+
+        .debug .label {
+            color: #7b6fde;
+        }
+
+        .debug .value {
+            color: #e0e0e8;
+        }
+
+        /* Pressure bar */
+        .pressure-bar-container {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 200px;
+            background: #1a1a22;
+            border: 1px solid #2a2a32;
+            border-radius: 6px;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .pressure-bar-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: linear-gradient(to top, #7b6fde, #a78bfa);
+            border-radius: 0 0 5px 5px;
+            transition: height 0.05s;
+        }
+
+        /* Bottom bar */
+        .bottom-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background: #141418;
+            border-top: 1px solid #2a2a32;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: 1px solid #2a2a32;
+            border-radius: 6px;
+            background: #1a1a22;
+            color: #c8c8d0;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: #222230;
+            border-color: #7b6fde;
+        }
+
+        .btn.primary {
+            background: #7b6fde;
+            border-color: #7b6fde;
+            color: white;
+        }
+
+        .btn.primary:hover {
+            background: #6a5ecd;
+        }
+
+        .btn.primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .last-response {
+            flex: 1;
+            font-size: 12px;
+            color: #888;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .last-response.success {
+            color: #44dd88;
+        }
+
+        /* Auto-send indicator */
+        .auto-send-indicator {
+            font-size: 12px;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .auto-send-indicator .timer-bar {
+            width: 60px;
+            height: 3px;
+            background: #1a1a22;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .auto-send-indicator .timer-fill {
+            height: 100%;
+            background: #7b6fde;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Tablet Touch <span>— FirstClaude</span></h1>
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Disconnected</span>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="touchCanvas"></canvas>
+
+        <div class="debug" id="debugPanel">
+            <div><span class="label">Pressure: </span><span class="value" id="dbgPressure">—</span></div>
+            <div><span class="label">Tilt X/Y: </span><span class="value" id="dbgTilt">—</span></div>
+            <div><span class="label">Position: </span><span class="value" id="dbgPos">—</span></div>
+            <div><span class="label">Region: </span><span class="value" id="dbgRegion">—</span></div>
+            <div><span class="label">Speed: </span><span class="value" id="dbgSpeed">—</span></div>
+            <div><span class="label">Pointer: </span><span class="value" id="dbgPointer">—</span></div>
+            <div><span class="label">Strokes: </span><span class="value" id="dbgStrokes">0</span></div>
+        </div>
+
+        <div class="pressure-bar-container">
+            <div class="pressure-bar-fill" id="pressureBar"></div>
+        </div>
+    </div>
+
+    <div class="bottom-bar">
+        <button class="btn" id="clearBtn">Clear Canvas</button>
+        <div class="auto-send-indicator" id="autoSendIndicator" style="display: none;">
+            <span>Sending in...</span>
+            <div class="timer-bar"><div class="timer-fill" id="timerFill"></div></div>
+        </div>
+        <div class="last-response" id="lastResponse">Draw on the canvas to send touch to FirstClaude</div>
+        <button class="btn primary" id="sendBtn" disabled>Send to Claude</button>
+    </div>
+
+    <script>
+        // --- Config ---
+        const WS_URL = 'ws://localhost:8765';
+        const AUTO_SEND_DELAY = 1500; // ms after stroke ends
+
+        // --- State ---
+        let ws = null;
+        let connected = false;
+        let isDrawing = false;
+        let currentStroke = null;
+        let strokes = [];
+        let autoSendTimer = null;
+        let timerStart = null;
+
+        // --- Canvas setup ---
+        const canvas = document.getElementById('touchCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = container.clientWidth * dpr;
+            canvas.height = container.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+            redrawStrokes();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- WebSocket ---
+        function connectWS() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                connected = true;
+                document.getElementById('statusDot').classList.add('connected');
+                document.getElementById('statusText').textContent = 'Connected';
+                console.log('WebSocket connected');
+            };
+
+            ws.onclose = () => {
+                connected = false;
+                document.getElementById('statusDot').classList.remove('connected');
+                document.getElementById('statusText').textContent = 'Disconnected';
+                console.log('WebSocket disconnected, reconnecting in 3s...');
+                setTimeout(connectWS, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'ack') {
+                    const resp = document.getElementById('lastResponse');
+                    if (data.success) {
+                        resp.textContent = 'Sent! ' + (data.natural || '').slice(0, 80) + '...';
+                        resp.className = 'last-response success';
+                    } else {
+                        resp.textContent = 'Failed to send to Discord';
+                        resp.className = 'last-response';
+                    }
+                }
+            };
+        }
+        connectWS();
+
+        // --- Region helper (mirrors Python) ---
+        function getRegion(nx, ny) {
+            const v = ny < 0.33 ? 'upper' : ny < 0.66 ? 'center' : 'lower';
+            const h = nx < 0.33 ? 'left' : nx < 0.66 ? 'center' : 'right';
+            if (v === 'center' && h === 'center') return 'center';
+            if (v === 'center') return h;
+            if (h === 'center') return v;
+            return v + '-' + h;
+        }
+
+        // --- Pointer Events ---
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            // Capture the pointer so we get all pen events even if it drifts off canvas
+            canvas.setPointerCapture(e.pointerId);
+            isDrawing = true;
+            cancelAutoSend();
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const nx = x / rect.width;
+            const ny = y / rect.height;
+
+            currentStroke = {
+                points: [{
+                    x: nx,
+                    y: ny,
+                    pressure: e.pressure,
+                    tiltX: e.tiltX || 0,
+                    tiltY: e.tiltY || 0,
+                    timestamp: Date.now()
+                }],
+                startTime: Date.now(),
+                canvasPoints: [{ x, y, pressure: e.pressure }]
+            };
+
+            updateDebug(e, nx, ny);
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+
+            // Use coalesced events for higher-fidelity tablet data
+            const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+            // Always update debug with the latest event
+            const lastEvt = events[events.length - 1];
+            const lastX = lastEvt.clientX - rect.left;
+            const lastY = lastEvt.clientY - rect.top;
+            updateDebug(lastEvt, lastX / rect.width, lastY / rect.height);
+
+            // Update pressure bar always
+            document.getElementById('pressureBar').style.height = (lastEvt.pressure * 100) + '%';
+
+            if (!isDrawing || !currentStroke) return;
+            e.preventDefault();
+
+            for (const ce of events) {
+                const x = ce.clientX - rect.left;
+                const y = ce.clientY - rect.top;
+                const nx = x / rect.width;
+                const ny = y / rect.height;
+
+                const point = {
+                    x: nx,
+                    y: ny,
+                    pressure: ce.pressure,
+                    tiltX: ce.tiltX || 0,
+                    tiltY: ce.tiltY || 0,
+                    timestamp: Date.now()
+                };
+                currentStroke.points.push(point);
+                currentStroke.canvasPoints.push({ x, y, pressure: ce.pressure });
+
+                // Draw the stroke segment
+                const pts = currentStroke.canvasPoints;
+                if (pts.length >= 2) {
+                    const prev = pts[pts.length - 2];
+                    const curr = pts[pts.length - 1];
+                    drawSegment(prev, curr);
+                }
+            }
+        });
+
+        canvas.addEventListener('pointerup', (e) => {
+            if (!isDrawing || !currentStroke) return;
+            e.preventDefault();
+            isDrawing = false;
+
+            // Finalize stroke
+            const duration = Date.now() - currentStroke.startTime;
+            const pressures = currentStroke.points.map(p => p.pressure);
+
+            const stroke = {
+                points: currentStroke.points,
+                duration_ms: duration,
+                avg_pressure: pressures.reduce((a, b) => a + b, 0) / pressures.length,
+                max_pressure: Math.max(...pressures),
+            };
+
+            strokes.push(stroke);
+            currentStroke = null;
+
+            document.getElementById('dbgStrokes').textContent = strokes.length;
+            document.getElementById('sendBtn').disabled = strokes.length === 0;
+
+            // Auto-send is disabled — use the "Send to Claude" button
+            // To re-enable, uncomment: startAutoSend();
+        });
+
+        canvas.addEventListener('pointerleave', (e) => {
+            if (isDrawing && currentStroke) {
+                // Treat as pointerup
+                canvas.dispatchEvent(new PointerEvent('pointerup', e));
+            }
+        });
+
+        // Prevent default touch behavior
+        canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+        canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+        // --- Drawing ---
+        function drawSegment(prev, curr) {
+            const pressure = curr.pressure || 0.1;
+            const lineWidth = 1 + pressure * 10;
+            const alpha = 0.3 + pressure * 0.7;
+
+            ctx.beginPath();
+            ctx.moveTo(prev.x, prev.y);
+            ctx.lineTo(curr.x, curr.y);
+            ctx.strokeStyle = `rgba(123, 111, 222, ${alpha})`;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        }
+
+        function redrawStrokes() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // We don't store canvas-space points across redraws for simplicity
+            // The canvas clears on resize
+        }
+
+        // --- Debug panel ---
+        function updateDebug(e, nx, ny) {
+            document.getElementById('dbgPressure').textContent = e.pressure.toFixed(3);
+            document.getElementById('dbgTilt').textContent = `${e.tiltX || 0}, ${e.tiltY || 0}`;
+            document.getElementById('dbgPos').textContent = `${nx.toFixed(2)}, ${ny.toFixed(2)}`;
+            document.getElementById('dbgRegion').textContent = getRegion(nx, ny);
+            document.getElementById('dbgPointer').textContent = e.pointerType || 'unknown';
+
+            // Speed (if drawing)
+            if (currentStroke && currentStroke.points.length >= 2) {
+                const pts = currentStroke.points;
+                const p1 = pts[pts.length - 2];
+                const p2 = pts[pts.length - 1];
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const dt = p2.timestamp - p1.timestamp;
+                const speed = dt > 0 ? Math.sqrt(dx*dx + dy*dy) / dt : 0;
+                document.getElementById('dbgSpeed').textContent = speed.toFixed(4) + ' u/ms';
+            }
+        }
+
+        // --- Auto-send ---
+        function startAutoSend() {
+            cancelAutoSend();
+            timerStart = Date.now();
+            const indicator = document.getElementById('autoSendIndicator');
+            const fill = document.getElementById('timerFill');
+            indicator.style.display = 'flex';
+
+            function updateTimer() {
+                const elapsed = Date.now() - timerStart;
+                const pct = Math.min(100, (elapsed / AUTO_SEND_DELAY) * 100);
+                fill.style.width = pct + '%';
+
+                if (elapsed >= AUTO_SEND_DELAY) {
+                    sendTouch();
+                    indicator.style.display = 'none';
+                } else {
+                    autoSendTimer = requestAnimationFrame(updateTimer);
+                }
+            }
+            autoSendTimer = requestAnimationFrame(updateTimer);
+        }
+
+        function cancelAutoSend() {
+            if (autoSendTimer) {
+                cancelAnimationFrame(autoSendTimer);
+                autoSendTimer = null;
+            }
+            document.getElementById('autoSendIndicator').style.display = 'none';
+            document.getElementById('timerFill').style.width = '0%';
+        }
+
+        // --- Send touch data ---
+        function sendTouch() {
+            cancelAutoSend();
+
+            if (strokes.length === 0) return;
+            if (!connected || !ws) {
+                document.getElementById('lastResponse').textContent = 'Not connected to server';
+                document.getElementById('lastResponse').className = 'last-response';
+                return;
+            }
+
+            const payload = {
+                type: 'touch',
+                strokes: strokes.map(s => ({
+                    points: s.points,
+                    duration_ms: s.duration_ms,
+                    avg_pressure: s.avg_pressure,
+                    max_pressure: s.max_pressure,
+                }))
+            };
+
+            ws.send(JSON.stringify(payload));
+            document.getElementById('lastResponse').textContent = 'Sending...';
+            document.getElementById('lastResponse').className = 'last-response';
+
+            // Reset strokes
+            strokes = [];
+            document.getElementById('dbgStrokes').textContent = '0';
+            document.getElementById('sendBtn').disabled = true;
+        }
+
+        // --- Buttons ---
+        document.getElementById('sendBtn').addEventListener('click', sendTouch);
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            strokes = [];
+            currentStroke = null;
+            cancelAutoSend();
+            document.getElementById('dbgStrokes').textContent = '0';
+            document.getElementById('sendBtn').disabled = true;
+        });
+    </script>
+</body>
+</html>
