@@ -1,6 +1,6 @@
 """
 Touch Translator — converts raw tablet touch data into rich descriptions.
-Produces both structured summaries and natural language for FirstClaude.
+Produces both structured summaries and natural language for Claude.
 """
 
 import math

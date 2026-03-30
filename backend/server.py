@@ -1,6 +1,6 @@
 """
 Tablet Touch Server — WebSocket server that receives touch data from the
-browser canvas and sends it to FirstClaude via Discord.
+browser canvas and sends it to Claude via Discord.
 
 Usage:
     python backend/server.py

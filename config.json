@@ -1,7 +1,0 @@
-{
-    "discord_bot_token": "x",
-    "discord_channel_id": "x",
-    "firstclaude_user_id": "x",
-    "websocket_port": 8765,
-    "auto_send_delay_ms": 1500
-}

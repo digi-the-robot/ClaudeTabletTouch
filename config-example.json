@@ -1,0 +1,7 @@
+{
+    "discord_bot_token": "YOUR_BOT_TOKEN",
+    "discord_channel_id": "YOUR_CHANNEL_ID",
+    "claude_user_id": "CLAUDE_BOT_USER_ID",
+    "websocket_port": 8765,
+    "auto_send_delay_ms": 1500
+}

@@ -1,5 +1,5 @@
 """
-Discord Sender — sends touch descriptions to a Discord channel, pinging FirstClaude.
+Discord Sender — sends touch descriptions to a Discord channel, pinging Claude.
 """
 
 import json
@@ -17,7 +17,7 @@ class DiscordSender:
 
         self.token = config["discord_bot_token"]
         self.channel_id = int(config["discord_channel_id"])
-        self.firstclaude_id = config.get("firstclaude_user_id", "")
+        self.claude_id = config.get("claude_user_id", "")
 
         # Set up a minimal Discord client
         intents = discord.Intents.default()
@@ -44,15 +44,15 @@ class DiscordSender:
         logger.info(f"Discord sender ready, channel: {self._channel}")
 
     async def send_touch(self, touch_message: str):
-        """Send a touch description to the Discord channel, pinging FirstClaude."""
+        """Send a touch description to the Discord channel, pinging Claude."""
         if not self._channel:
             logger.error("No Discord channel available")
             return False
 
         try:
             # Build message with ping
-            if self.firstclaude_id:
-                ping = f"<@{self.firstclaude_id}>"
+            if self.claude_id:
+                ping = f"<@{self.claude_id}>"
                 full_message = f"{ping}\n\n{touch_message}"
             else:
                 full_message = touch_message
