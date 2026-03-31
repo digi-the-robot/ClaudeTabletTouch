@@ -109,8 +109,8 @@ class TouchServer:
 
             logger.info(f"Translation: {result['natural'][:100]}...")
 
-            # Send to Discord
-            success = await self.discord.send_touch(result["combined"])
+            # Send to Discord as embed
+            success = await self.discord.send_touch(result)
 
             # Acknowledge to frontend
             await websocket.send(json.dumps({

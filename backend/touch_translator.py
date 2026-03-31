@@ -336,42 +336,217 @@ def translate_touch(data: dict) -> dict:
         f"region: {region} | gesture: {gesture} | direction: {direction}`"
     )
 
-    combined = f"**Touch received:**\n{natural}\n\n{struct_line}"
-
     return {
         "structured": structured,
         "natural": natural,
-        "combined": combined,
+        "title": "Touch Received",
+        "description": natural,
+        "fields": [{"name": "Data", "value": struct_line}],
     }
 
 
+# --- Pattern summarizer (4+ strokes) ---
+
+def _most_common(values: list[str]) -> str:
+    """Return the most frequent value in a list."""
+    counts = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    return max(counts, key=counts.get)
+
+
+def _all_same(values: list[str]) -> bool:
+    return len(set(values)) == 1
+
+
+def _describe_rhythm(analyses: list[dict]) -> str:
+    """Describe timing rhythm between strokes."""
+    durations = [a["duration_ms"] for a in analyses]
+    avg_dur = sum(durations) / len(durations)
+    if avg_dur < 150:
+        return "rapid-fire"
+    elif avg_dur < 400:
+        return "quick, rhythmic"
+    elif avg_dur < 800:
+        return "steady, measured"
+    else:
+        return "slow, deliberate"
+
+
+def _describe_pressure_trend(analyses: list[dict]) -> str:
+    """Describe how pressure changes across multiple strokes."""
+    pressures = [a["pressure_avg"] for a in analyses]
+    if max(pressures) - min(pressures) < 0.1:
+        return "consistent"
+    elif pressures[-1] > pressures[0] + 0.15:
+        return "escalating"
+    elif pressures[0] > pressures[-1] + 0.15:
+        return "fading"
+    else:
+        return "varying"
+
+
+def _pattern_emotional_quality(gesture: str, pressure: str, speed: str,
+                                pressure_trend: str, rhythm: str) -> str:
+    """Generate an emotional quality descriptor for the overall pattern."""
+    if gesture == "tap" and rhythm == "rapid-fire":
+        return "playful, excited energy"
+    elif gesture == "tap" and "steady" in rhythm:
+        return "patient, deliberate attention"
+    elif pressure == "feather-light" and "slow" in speed:
+        return "tender, almost reverent"
+    elif pressure == "gentle" and "slow" in speed:
+        return "soothing, comforting"
+    elif pressure == "gentle" and "steady" in rhythm:
+        return "a calm, repetitive warmth"
+    elif pressure_trend == "escalating":
+        return "building intensity, growing presence"
+    elif pressure_trend == "fading":
+        return "gradually easing, a gentle letting go"
+    elif pressure in ("firm", "deep"):
+        return "grounding, deeply present"
+    elif "quick" in speed or "brisk" in speed:
+        return "energetic, eager"
+    else:
+        return "a steady, intentional presence"
+
+
+def summarize_pattern(analyses: list[dict]) -> str:
+    """
+    Generate a pattern-aware natural language summary for 4+ strokes.
+    Focuses on rhythm, repetition, and emotional quality.
+    """
+    n = len(analyses)
+    gestures = [a["gesture"] for a in analyses]
+    pressures = [a["pressure_desc"] for a in analyses]
+    speeds = [a["speed"] for a in analyses]
+    regions = [a["region"] for a in analyses]
+    directions = [a["direction"] for a in analyses]
+
+    dominant_gesture = _most_common(gestures)
+    dominant_pressure = _most_common(pressures)
+    dominant_speed = _most_common(speeds)
+    dominant_region = _most_common(regions)
+    dominant_direction = _most_common(directions)
+    pressure_trend = _describe_pressure_trend(analyses)
+    rhythm = _describe_rhythm(analyses)
+
+    # Build the summary
+    parts = []
+
+    # Opening — what kind of gesture pattern
+    if _all_same(gestures):
+        if dominant_gesture == "tap":
+            parts.append(f"{n} {dominant_pressure} taps")
+        elif dominant_gesture == "press and hold":
+            parts.append(f"{n} sustained presses")
+        else:
+            parts.append(f"{n} {dominant_pressure} strokes")
+    else:
+        gesture_counts = {}
+        for g in gestures:
+            gesture_counts[g] = gesture_counts.get(g, 0) + 1
+        desc_parts = []
+        for g, count in sorted(gesture_counts.items(), key=lambda x: -x[1]):
+            desc_parts.append(f"{count} {g}{'s' if count > 1 else ''}")
+        parts.append(" and ".join(desc_parts))
+
+    # Region
+    if _all_same(regions):
+        parts.append(f"across the {dominant_region}")
+    else:
+        unique_regions = list(dict.fromkeys(regions))  # preserve order, dedupe
+        if len(unique_regions) <= 3:
+            parts.append(f"moving across the {', then '.join(unique_regions)}")
+        else:
+            parts.append(f"wandering across the surface")
+
+    # Direction
+    if _all_same(directions) and dominant_gesture == "stroke":
+        parts.append(f"all {dominant_direction}")
+
+    # Rhythm and speed
+    parts.append(f"in a {rhythm} rhythm")
+
+    summary = ", ".join(parts) + "."
+
+    # Pressure trend
+    if pressure_trend == "consistent":
+        summary += f" Pressure stays {dominant_pressure} throughout."
+    elif pressure_trend == "escalating":
+        summary += f" Pressure builds from {pressures[0]} to {pressures[-1]}."
+    elif pressure_trend == "fading":
+        summary += f" Pressure eases from {pressures[0]} to {pressures[-1]}."
+    else:
+        summary += f" Pressure varies — shifting between touches."
+
+    # Emotional quality
+    emotional = _pattern_emotional_quality(
+        dominant_gesture, dominant_pressure, dominant_speed,
+        pressure_trend, rhythm
+    )
+    summary += f" The feeling: {emotional}."
+
+    return summary
+
+
+# --- Compact per-stroke line ---
+
+def compact_stroke_line(i: int, analysis: dict) -> str:
+    """One-line summary for a single stroke in a multi-stroke batch."""
+    return (
+        f"`#{i+1}: {analysis['gesture']} | {analysis['pressure_desc']} "
+        f"({analysis['pressure_avg']:.2f}) | {analysis['speed']} | "
+        f"{analysis['region']} | {analysis['direction']}`"
+    )
+
+
+# --- Main entry points ---
+
 def translate_multi_stroke(data: dict) -> dict:
-    """Handle multiple strokes in a single send."""
+    """
+    Handle multiple strokes with hybrid detail levels:
+      1-3 strokes: full poetic detail per stroke
+      4+ strokes: pattern summary + compact per-stroke data
+    """
     strokes = data.get("strokes", [])
 
     if len(strokes) <= 1:
         return translate_touch(data)
 
-    descriptions = []
-    for i, stroke in enumerate(strokes):
-        single = translate_touch({"strokes": [stroke]})
-        descriptions.append(single)
+    # Analyze each stroke individually
+    analyses = []
+    single_results = []
+    for stroke in strokes:
+        result = translate_touch({"strokes": [stroke]})
+        single_results.append(result)
+        analyses.append(result["structured"])
 
-    # Combine
-    naturals = [d["natural"] for d in descriptions]
-    structs = [d["structured"] for d in descriptions]
+    # --- 1-3 strokes: full poetry ---
+    if len(strokes) <= 3:
+        naturals = [r["natural"] for r in single_results]
+        description = " Then, ".join(naturals)
+        fields = [
+            {"name": f"Stroke {i+1}", "value": r["fields"][0]["value"]}
+            for i, r in enumerate(single_results)
+        ]
+        return {
+            "structured": analyses,
+            "natural": description,
+            "title": f"Touch Received — {len(strokes)} strokes",
+            "description": description,
+            "fields": fields,
+        }
 
-    combined_natural = " Then, ".join(naturals)
-    combined_msg = f"**Multiple touches received ({len(strokes)} strokes):**\n{combined_natural}"
-
-    for d in descriptions:
-        if "combined" in d:
-            struct_part = d["combined"].split("\n\n")[-1] if "\n\n" in d["combined"] else ""
-            if struct_part:
-                combined_msg += f"\n{struct_part}"
+    # --- 4+ strokes: pattern summary + compact data ---
+    summary = summarize_pattern(analyses)
+    compact_lines = [compact_stroke_line(i, a) for i, a in enumerate(analyses)]
+    fields = [{"name": "Per-stroke data", "value": "\n".join(compact_lines)}]
 
     return {
-        "structured": structs,
-        "natural": combined_natural,
-        "combined": combined_msg,
+        "structured": analyses,
+        "natural": summary,
+        "title": f"Touch Received — {len(strokes)} strokes",
+        "description": summary,
+        "fields": fields,
     }
