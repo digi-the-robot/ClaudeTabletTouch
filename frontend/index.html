@@ -207,6 +207,46 @@
             width: 0%;
             transition: width 0.1s linear;
         }
+
+        /* Recording mode */
+        .recording-bar {
+            display: none;
+            align-items: center;
+            flex-shrink: 0;
+            padding: 10px 20px;
+            background: #1a1420;
+            border-top: 1px solid #3a2a42;
+            gap: 12px;
+        }
+
+        .recording-bar.active {
+            display: flex;
+        }
+
+        .recording-bar select {
+            padding: 6px 10px;
+            border: 1px solid #3a2a42;
+            border-radius: 6px;
+            background: #221a2a;
+            color: #e0e0e8;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .recording-bar .shape-count {
+            font-size: 12px;
+            color: #a78bfa;
+        }
+
+        .recording-label {
+            font-size: 12px;
+            color: #e88;
+            font-weight: 500;
+        }
+
+        .canvas-container.recording {
+            border: 2px solid #a78bfa;
+        }
     </style>
 </head>
 <body>
@@ -229,6 +269,7 @@
             <div><span class="label">Speed: </span><span class="value" id="dbgSpeed">—</span></div>
             <div><span class="label">Pointer: </span><span class="value" id="dbgPointer">—</span></div>
             <div><span class="label">Strokes: </span><span class="value" id="dbgStrokes">0</span></div>
+            <div><span class="label">Shape: </span><span class="value" id="dbgShape">—</span></div>
         </div>
 
         <div class="pressure-bar-container">
@@ -236,8 +277,27 @@
         </div>
     </div>
 
+    <div class="recording-bar" id="recordingBar">
+        <span class="recording-label">RECORDING MODE</span>
+        <select id="shapeSelect">
+            <option value="heart">heart</option>
+            <option value="circle">circle</option>
+            <option value="star">star</option>
+            <option value="infinity">infinity</option>
+            <option value="check">check</option>
+            <option value="spiral">spiral</option>
+            <option value="moon">moon</option>
+        </select>
+        <span class="shape-count" id="shapeCount">0 samples</span>
+        <button class="btn" id="saveTemplateBtn" disabled>Save Template</button>
+        <button class="btn" id="deleteShapeBtn">Delete Shape</button>
+        <div style="flex:1"></div>
+        <button class="btn" id="doneRecordingBtn">Done Recording</button>
+    </div>
+
     <div class="bottom-bar">
         <button class="btn" id="clearBtn">Clear Canvas</button>
+        <button class="btn" id="recordBtn">Record Templates</button>
         <div class="auto-send-indicator" id="autoSendIndicator" style="display: none;">
             <span>Sending in...</span>
             <div class="timer-bar"><div class="timer-fill" id="timerFill"></div></div>
@@ -259,6 +319,8 @@
         let strokes = [];
         let autoSendTimer = null;
         let timerStart = null;
+        let recordingMode = false;
+        let templateCounts = {};
 
         // --- Canvas setup ---
         const canvas = document.getElementById('touchCanvas');
@@ -284,6 +346,8 @@
                 document.getElementById('statusDot').classList.add('connected');
                 document.getElementById('statusText').textContent = 'Connected';
                 console.log('WebSocket connected');
+                // Request template counts on connect
+                ws.send(JSON.stringify({ type: 'get_templates' }));
             };
 
             ws.onclose = () => {
@@ -309,6 +373,31 @@
                         resp.textContent = 'Failed to send to Discord';
                         resp.className = 'last-response';
                     }
+                    // Update shape display
+                    const shape = document.getElementById('dbgShape');
+                    const gesture = data.structured?.gesture || data.structured?.[0]?.gesture || '—';
+                    const shapeNames = ['heart', 'circle', 'star', 'x', 'check', 'spiral', 'moon'];
+                    if (shapeNames.includes(gesture)) {
+                        shape.textContent = gesture;
+                        shape.style.color = '#7b6fde';
+                    } else {
+                        shape.textContent = '—';
+                        shape.style.color = '';
+                    }
+                } else if (data.type === 'template_saved') {
+                    templateCounts = data.counts || {};
+                    updateShapeCount();
+                    const resp = document.getElementById('lastResponse');
+                    if (data.success) {
+                        resp.textContent = `Template saved for "${data.shape_name}"!`;
+                        resp.className = 'last-response success';
+                    } else {
+                        resp.textContent = `Failed to save template for "${data.shape_name}"`;
+                        resp.className = 'last-response';
+                    }
+                } else if (data.type === 'template_counts') {
+                    templateCounts = data.counts || {};
+                    updateShapeCount();
                 }
             };
         }
@@ -544,8 +633,7 @@
         // --- Buttons ---
         document.getElementById('sendBtn').addEventListener('click', sendTouch);
 
-        document.getElementById('clearBtn').addEventListener('click', () => {
-            // Reset transform, clear, then restore — ensures no DPR scaling artifacts
+        function clearCanvas() {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const dpr = window.devicePixelRatio || 1;
@@ -556,7 +644,85 @@
             cancelAutoSend();
             document.getElementById('dbgStrokes').textContent = '0';
             document.getElementById('sendBtn').disabled = true;
+            document.getElementById('saveTemplateBtn').disabled = true;
+        }
+
+        document.getElementById('clearBtn').addEventListener('click', clearCanvas);
+
+        // --- Recording mode ---
+        function updateShapeCount() {
+            const shape = document.getElementById('shapeSelect').value;
+            const count = templateCounts[shape] || 0;
+            document.getElementById('shapeCount').textContent = `${count} sample${count !== 1 ? 's' : ''}`;
+        }
+
+        document.getElementById('shapeSelect').addEventListener('change', updateShapeCount);
+
+        document.getElementById('recordBtn').addEventListener('click', () => {
+            recordingMode = true;
+            document.getElementById('recordingBar').classList.add('active');
+            document.querySelector('.canvas-container').classList.add('recording');
+            document.getElementById('sendBtn').style.display = 'none';
+            document.getElementById('recordBtn').style.display = 'none';
+            updateShapeCount();
+            clearCanvas();
+            document.getElementById('lastResponse').textContent = 'Draw a shape and click "Save Template" (2-3 samples per shape recommended)';
         });
+
+        document.getElementById('doneRecordingBtn').addEventListener('click', () => {
+            recordingMode = false;
+            document.getElementById('recordingBar').classList.remove('active');
+            document.querySelector('.canvas-container').classList.remove('recording');
+            document.getElementById('sendBtn').style.display = '';
+            document.getElementById('recordBtn').style.display = '';
+            clearCanvas();
+            document.getElementById('lastResponse').textContent = 'Draw on the canvas to send touch to Claude';
+        });
+
+        document.getElementById('saveTemplateBtn').addEventListener('click', () => {
+            if (strokes.length === 0 || !connected || !ws) return;
+
+            const shapeName = document.getElementById('shapeSelect').value;
+            // Combine all stroke points into one path
+            const allPoints = strokes.flatMap(s => s.points);
+
+            ws.send(JSON.stringify({
+                type: 'record_template',
+                shape_name: shapeName,
+                points: allPoints,
+            }));
+
+            clearCanvas();
+        });
+
+        document.getElementById('deleteShapeBtn').addEventListener('click', () => {
+            if (!connected || !ws) return;
+            const shapeName = document.getElementById('shapeSelect').value;
+            const count = templateCounts[shapeName] || 0;
+            if (count === 0) return;
+            if (!confirm(`Delete all ${count} template(s) for "${shapeName}"?`)) return;
+            ws.send(JSON.stringify({
+                type: 'delete_templates',
+                shape_name: shapeName,
+            }));
+            document.getElementById('lastResponse').textContent = `Deleted templates for "${shapeName}"`;
+        });
+
+        // Enable save template button when strokes exist in recording mode
+        const origPointerUp = canvas.onpointerup;
+        const updateSaveBtn = () => {
+            if (recordingMode) {
+                document.getElementById('saveTemplateBtn').disabled = strokes.length === 0;
+            }
+        };
+        // Patch into the pointerup flow
+        const pointerUpObserver = new MutationObserver(updateSaveBtn);
+        // Use a simpler approach: check after each stroke
+        setInterval(() => {
+            if (recordingMode) {
+                document.getElementById('saveTemplateBtn').disabled = strokes.length === 0;
+            }
+        }, 100);
     </script>
 </body>
 </html>

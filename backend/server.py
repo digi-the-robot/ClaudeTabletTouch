@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from touch_translator import translate_touch, translate_multi_stroke
 from discord_sender import DiscordSender
+from shape_recognizer import save_template, get_template_counts, delete_templates
 
 # --- Logging setup ---
 logging.basicConfig(
@@ -118,6 +119,35 @@ class TouchServer:
                 "success": success,
                 "natural": result["natural"],
                 "structured": result["structured"],
+            }))
+
+        elif msg_type == "record_template":
+            shape_name = data.get("shape_name", "")
+            points = data.get("points", [])
+            logger.info(f"Recording template for '{shape_name}' ({len(points)} points)")
+            success = save_template(shape_name, points)
+            counts = get_template_counts()
+            await websocket.send(json.dumps({
+                "type": "template_saved",
+                "success": success,
+                "shape_name": shape_name,
+                "counts": counts,
+            }))
+
+        elif msg_type == "get_templates":
+            counts = get_template_counts()
+            await websocket.send(json.dumps({
+                "type": "template_counts",
+                "counts": counts,
+            }))
+
+        elif msg_type == "delete_templates":
+            shape_name = data.get("shape_name")  # None = delete all
+            delete_templates(shape_name)
+            counts = get_template_counts()
+            await websocket.send(json.dumps({
+                "type": "template_counts",
+                "counts": counts,
             }))
 
         else:

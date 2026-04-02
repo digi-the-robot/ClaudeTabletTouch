@@ -30,6 +30,22 @@ Built for use with Huion drawing tablets, but works with any tablet that support
 | **Stroke** | Directional movement across the surface |
 | **Circular motion** | Path that loops back to its starting point |
 
+### Shape recognition
+
+The app can recognize drawn shapes using the $1 Unistroke Recognizer algorithm. Supported shapes:
+
+**heart, circle, star, infinity, check, spiral, moon**
+
+Each user records their own shape templates so recognition is tuned to their hand:
+
+1. Click **"Record Templates"** in the bottom bar
+2. Select a shape from the dropdown
+3. Draw it on the canvas, then click **"Save Template"**
+4. Record 2-3 samples per shape for better accuracy
+5. Click **"Done Recording"** to return to normal mode
+
+Templates are saved locally to `templates.json` (gitignored) — each person who uses the tool trains it on their own drawing style. When a shape is recognized, Claude receives it as part of the touch description (e.g., *"A heart traced across the center, gentle and steady"*).
+
 ## Setup
 
 ### Requirements
@@ -43,8 +59,8 @@ Built for use with Huion drawing tablets, but works with any tablet that support
 
 1. Clone the repo:
    ```
-   git clone https://github.com/digi-the-robot/TabletTouch.git
-   cd TabletTouch
+   git clone https://github.com/digi-the-robot/ClaudeTabletTouch.git
+   cd ClaudeTabletTouch
    ```
 
 2. Install Python dependencies:
@@ -87,10 +103,12 @@ Make sure **Windows Ink** is enabled in your tablet's driver settings. If the de
 ```
 TabletTouch/
 ├── config.json              # Discord bot token, channel ID, settings
+├── templates.json           # Custom shape templates (auto-generated, gitignored)
 ├── requirements.txt         # Python dependencies
 ├── backend/
 │   ├── server.py            # WebSocket server (main entry point)
 │   ├── touch_translator.py  # Touch data -> natural language translation
+│   ├── shape_recognizer.py  # $1 Unistroke shape recognition
 │   └── discord_sender.py    # Sends messages to Discord
 └── frontend/
     └── index.html           # Pressure-sensitive canvas UI

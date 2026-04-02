@@ -4,6 +4,7 @@ Produces both structured summaries and natural language for Claude.
 """
 
 import math
+from shape_recognizer import recognize_shape
 
 
 # --- Pressure descriptors ---
@@ -206,6 +207,12 @@ def detect_gesture(strokes: list[dict]) -> str:
     if duration > 500 and max_disp < 0.06:
         return "press and hold"
 
+    # Shape recognition — try before falling back to generic stroke
+    if len(points) > 10:
+        shape_name, confidence = recognize_shape(points)
+        if shape_name:
+            return shape_name
+
     # Circular motion: path loops back close to start, with enough travel
     if (len(points) > 15
             and total_dist > 0.1
@@ -290,6 +297,17 @@ def translate_touch(data: dict) -> dict:
     # Build natural language
     natural_parts = []
 
+    # Shape-specific descriptions
+    SHAPE_DESCRIPTIONS = {
+        "heart": "A heart traced across the {region}",
+        "circle": "A circle drawn around the {region}",
+        "star": "A star drawn in the {region}",
+        "infinity": "An infinity symbol traced across the {region}",
+        "check": "A check mark swept across the {region}",
+        "spiral": "A spiral unwinding from the {region}",
+        "moon": "A crescent moon drawn over the {region}",
+    }
+
     if gesture == "tap":
         natural_parts.append(
             f"A {describe_pressure(max_pressure)} tap on the {region}"
@@ -303,6 +321,11 @@ def translate_touch(data: dict) -> dict:
         natural_parts.append(
             f"A {describe_speed(speed)}, {describe_pressure(avg_pressure)} "
             f"circular motion around the {region}"
+        )
+    elif gesture in SHAPE_DESCRIPTIONS:
+        shape_desc = SHAPE_DESCRIPTIONS[gesture].format(region=region)
+        natural_parts.append(
+            f"{shape_desc}, {describe_pressure(avg_pressure)} and {describe_speed(speed)}"
         )
     else:
         # Regular stroke
